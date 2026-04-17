@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-import contextlib
 import json
-import os
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
-from starlette.applications import Starlette
-from starlette.responses import JSONResponse, RedirectResponse
-from starlette.routing import Mount, Route
 
 from app.diva_api import DEFAULT_ACCEPT, DIVA_AUTH_TOKEN, DIVA_BASE_URL, diva_request
 
-mcp = FastMCP("diva-api", stateless_http=True)
+mcp = FastMCP("diva-api")
 
 
 @mcp.tool()
@@ -107,41 +102,8 @@ async def diva_delete_record(record_type: str, record_id: str) -> dict[str, Any]
     return await diva_request("DELETE", f"record/{record_type}/{record_id}", accept="text/plain")
 
 
-async def health(_request):
-    return JSONResponse({"ok": True, "service": "diva-api-mcp"})
-
-
-async def root(_request):
-    return JSONResponse(
-        {
-            "ok": True,
-            "service": "diva-api-mcp",
-            "message": "MCP endpoint available at /mcp",
-            "health": "/health",
-            "mcp": "/mcp",
-        }
-    )
-
-
-@contextlib.asynccontextmanager
-async def lifespan(_app: Starlette):
-    async with mcp.session_manager.run():
-        yield
-
-
-app = Starlette(
-    routes=[
-        Route("/", root),
-        Route("/health", health),
-        Route("/mcp", endpoint=lambda request: RedirectResponse(url="/mcp/", status_code=307)),
-        Mount("/mcp", app=mcp.streamable_http_app()),
-    ],
-    lifespan=lifespan,
-)
+app = mcp.streamable_http_app()
 
 
 if __name__ == "__main__":
-    import uvicorn
-
-    port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("app.server:app", host="0.0.0.0", port=port)
+    mcp.run(transport="streamable-http")
