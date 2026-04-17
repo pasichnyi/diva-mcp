@@ -1,8 +1,20 @@
-# DiVA MCP server
+# DiVA MCP Server
 
-A small MCP server for the DiVA / Cora REST API, ready to open in VS Code and deploy to Render.
+This repository provides an MCP (Model Context Protocol) server for interacting with the DiVA / Cora REST API.
 
-## What it exposes
+It exposes DiVA functionality as MCP tools that can be used by compatible MCP clients and LLM applications.
+
+## Deployed endpoint
+
+Public MCP endpoint:
+
+```text
+https://diva-mcp.onrender.com/mcp
+```
+
+## Available tools
+
+The server currently exposes these MCP tools:
 
 - `diva_get_config`
 - `diva_read_record`
@@ -13,17 +25,222 @@ A small MCP server for the DiVA / Cora REST API, ready to open in VS Code and de
 - `diva_update_record`
 - `diva_delete_record`
 
-These map to the DiVA/Cora REST API endpoints documented by Uppsala University, including `/record/{type}/{id}`, `/record/{type}/`, `/record/{type}/{id}/incomingLinks`, and `/searchResult/{searchId}`. Auth is passed as `authToken`. See the official docs for payload shapes and media types.
+These tools wrap DiVA/Cora REST endpoints such as `/record/{type}/{id}`, `/record/{type}/`, `/record/{type}/{id}/incomingLinks`, and `/searchResult/{searchId}`.
 
-## Local development in VS Code
+## How to use the deployed server
 
-1. Open this folder in VS Code.
-2. Open a terminal in VS Code.
-3. Create and activate a virtual environment:
+This is a remote MCP server. Its URL is:
+
+```text
+https://diva-mcp.onrender.com/mcp
+```
+
+To use it, your client must support MCP over HTTP and follow the normal MCP lifecycle:
+
+1. `initialize`
+2. `notifications/initialized`
+3. `tools/list` or `tools/call`
+
+Requests must include these headers:
+
+```text
+Content-Type: application/json
+Accept: application/json, text/event-stream
+```
+
+After `initialize`, reuse the returned `Mcp-Session-Id` header in subsequent requests.
+
+## Testing with curl
+
+### 1. Initialize a session
+
+```bash
+curl -i -X POST https://diva-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"initialize",
+    "params":{
+      "protocolVersion":"2025-03-26",
+      "capabilities":{},
+      "clientInfo":{"name":"curl","version":"1.0"}
+    }
+  }'
+```
+
+Copy the `Mcp-Session-Id` value from the response headers.
+
+### 2. Send initialized notification
+
+```bash
+curl -i -X POST https://diva-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: YOUR_SESSION_ID" \
+  -d '{
+    "jsonrpc":"2.0",
+    "method":"notifications/initialized"
+  }'
+```
+
+### 3. List available tools
+
+```bash
+curl -i -X POST https://diva-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: YOUR_SESSION_ID" \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":2,
+    "method":"tools/list"
+  }'
+```
+
+### 4. Call a tool
+
+Example using `diva_get_config`:
+
+```bash
+curl -i -X POST https://diva-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: YOUR_SESSION_ID" \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":3,
+    "method":"tools/call",
+    "params":{
+      "name":"diva_get_config",
+      "arguments":{}
+    }
+  }'
+```
+
+### 5. One-shot shell test
+
+```bash
+RESP=$(curl -s -D /tmp/diva_headers.txt -X POST https://diva-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"1.0"}}}')
+
+SESSION_ID=$(grep -i '^mcp-session-id:' /tmp/diva_headers.txt | awk '{print $2}' | tr -d '\r')
+
+curl -s -X POST https://diva-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized"}' > /dev/null
+
+curl -s -X POST https://diva-mcp.onrender.com/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+```
+
+## Example MCP responses
+
+A successful deployment should allow:
+
+- `initialize` → `200 OK` and an `Mcp-Session-Id`
+- `notifications/initialized` → `202 Accepted`
+- `tools/list` → a list of exposed tools
+- `tools/call` → structured tool output or a structured error
+
+## Using it with MCP clients
+
+### ChatGPT
+
+If your ChatGPT account has custom MCP / Apps developer access, add the server using:
+
+```text
+https://diva-mcp.onrender.com/mcp
+```
+
+If you only see the consumer Apps UI and no way to create a custom connection, your account likely does not yet have that feature enabled.
+
+### Claude Desktop
+
+Add this to your MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "diva": {
+      "url": "https://diva-mcp.onrender.com/mcp"
+    }
+  }
+}
+```
+
+### Python example
+
+```python
+import requests
+
+URL = "https://diva-mcp.onrender.com/mcp"
+headers = {
+    "Content-Type": "application/json",
+    "Accept": "application/json, text/event-stream",
+}
+
+resp = requests.post(
+    URL,
+    headers=headers,
+    json={
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "python", "version": "1.0"},
+        },
+    },
+)
+
+session_id = resp.headers["mcp-session-id"]
+headers["Mcp-Session-Id"] = session_id
+
+requests.post(
+    URL,
+    headers=headers,
+    json={
+        "jsonrpc": "2.0",
+        "method": "notifications/initialized",
+    },
+)
+
+resp = requests.post(
+    URL,
+    headers=headers,
+    json={
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "diva_get_config",
+            "arguments": {},
+        },
+    },
+)
+
+print(resp.text)
+```
+
+## Local development
+
+Open the folder in VS Code and run:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install -r requirements.txt
+python -m app.server
 ```
 
 On Windows PowerShell:
@@ -31,72 +248,30 @@ On Windows PowerShell:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-4. Install dependencies:
-
-```bash
 pip install -r requirements.txt
-```
-
-5. Run the server:
-
-```bash
 python -m app.server
 ```
 
-6. Check health:
-
-```bash
-curl http://localhost:8000/health
-```
-
-## Use it as a remote MCP server
-
-After deployment, your MCP endpoint will be:
+Local MCP endpoint:
 
 ```text
-https://YOUR-SERVICE.onrender.com/
+http://localhost:8000/mcp
 ```
 
-If your client expects a dedicated path, you can later remount the MCP app at `/mcp`.
+## Deployment notes
 
-## Push to GitHub from VS Code
+The server is currently deployed on Render.
 
-In the VS Code terminal:
+Important deployment requirements:
 
-```bash
-git init
-git add .
-git commit -m "Initial DiVA MCP server"
-git branch -M main
-git remote add origin https://github.com/YOUR-USER/diva-mcp.git
-git push -u origin main
-```
+- bind to `0.0.0.0`
+- use the `PORT` environment variable provided by the platform
+- serve HTTPS via the hosting platform
+- keep MCP host/origin security settings aligned with the deployed domain
 
-Or in VS Code:
+## Notes and limitations
 
-- Open **Source Control**
-- Click **Initialize Repository** if needed
-- Stage all changes
-- Commit
-- Publish to GitHub
-
-## Deploy to Render
-
-Render currently documents free web services, which makes it a simple option for a hobby or test deployment.
-
-1. Create a GitHub repo and push this code.
-2. Sign in to Render.
-3. Click **New +** → **Blueprint** or **Web Service**.
-4. Select your GitHub repo.
-5. If using Blueprint, Render will read `render.yaml` automatically.
-6. Set the environment variable `DIVA_AUTH_TOKEN` in Render if your DiVA instance requires it.
-7. Deploy.
-
-## Notes
-
-- Free instances are not suitable for production.
-- Some DiVA operations require a valid auth token.
-- Search payloads and record payloads must match the Cora schema your DiVA installation expects.
-- The MCP Python SDK supports stdio, SSE, and Streamable HTTP transports, and this repo uses an HTTP deployment approach suitable for cloud hosting.
+- Some DiVA operations require a valid `authToken`.
+- `diva_search_records` requires a valid `search_id` and correctly formed XML payload.
+- A fake `search_id` will produce an upstream 404 from DiVA, which is expected.
+- Free cloud instances may sleep between requests and are not suitable for production workloads.
