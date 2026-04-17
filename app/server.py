@@ -6,10 +6,26 @@ import json
 from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from app.diva_api import DEFAULT_ACCEPT, DIVA_AUTH_TOKEN, DIVA_BASE_URL, diva_request
 
-mcp = FastMCP("diva-api")
+mcp = FastMCP(
+    "diva-api",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=[
+            "localhost:*",
+            "127.0.0.1:*",
+            "diva-mcp.onrender.com",
+            "diva-mcp.onrender.com:*",
+        ],
+        allowed_origins=[
+            "http://localhost:*",
+            "https://diva-mcp.onrender.com",
+        ],
+    ),
+)
 
 
 @mcp.tool()
