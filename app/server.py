@@ -59,8 +59,8 @@ async def diva_incoming_links(record_type: str, record_id: str) -> dict[str, Any
 
 @mcp.tool()
 async def diva_search_records(search_id: str, search_data_xml: str) -> dict[str, Any]:
-    """Search DiVA/Cora records: GET /searchResult/{searchId}?searchData=<xml>"""
-    return await diva_request("GET", f"searchResult/{search_id}", params={"searchData": search_data_xml})
+    """Search DiVA/Cora records: GET /record/searchResult/{searchId}?searchData=<xml>"""
+    return await diva_request("GET", f"record/searchResult/{search_id}", params={"searchData": search_data_xml})
 
 
 @mcp.tool()
