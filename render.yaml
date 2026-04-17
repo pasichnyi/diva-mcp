@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: diva-mcp
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.server
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
+      - key: DIVA_BASE_URL
+        value: https://diva.cora.epc.ub.uu.se/rest
+      - key: DIVA_AUTH_TOKEN
+        sync: false
