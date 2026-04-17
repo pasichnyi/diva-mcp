@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 from starlette.applications import Starlette
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.routing import Mount, Route
 
 from app.diva_api import DEFAULT_ACCEPT, DIVA_AUTH_TOKEN, DIVA_BASE_URL, diva_request
@@ -111,6 +111,18 @@ async def health(_request):
     return JSONResponse({"ok": True, "service": "diva-api-mcp"})
 
 
+async def root(_request):
+    return JSONResponse(
+        {
+            "ok": True,
+            "service": "diva-api-mcp",
+            "message": "MCP endpoint available at /mcp",
+            "health": "/health",
+            "mcp": "/mcp",
+        }
+    )
+
+
 @contextlib.asynccontextmanager
 async def lifespan(_app: Starlette):
     async with mcp.session_manager.run():
@@ -119,8 +131,10 @@ async def lifespan(_app: Starlette):
 
 app = Starlette(
     routes=[
+        Route("/", root),
         Route("/health", health),
-        Mount("/", app=mcp.streamable_http_app()),
+        Route("/mcp", endpoint=lambda request: RedirectResponse(url="/mcp/", status_code=307)),
+        Mount("/mcp", app=mcp.streamable_http_app()),
     ],
     lifespan=lifespan,
 )
